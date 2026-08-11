@@ -483,10 +483,9 @@ AUTOSTART_DESKTOP = """[Desktop Entry]
 Type=Application
 Name=AIO v2 Controller
 Comment=GPIO tray controller
-Exec=/usr/bin/python3 /usr/local/bin/aiov2_ctl --gui
+Exec=sh -c 'sleep 5; exec env QT_QPA_PLATFORM=xcb /usr/bin/python3 /usr/local/bin/aiov2_ctl --gui'
 Terminal=false
 X-GNOME-Autostart-enabled=true
-XDG_AUTOSTART_DELAY=5
 """
 
 SYSTEM_DESKTOP_ENTRY = """[Desktop Entry]
