@@ -641,8 +641,7 @@ def remove_apps():
     draw_header("Removing HackerGadgets AIO applications")
 
     print("Stopping related services before removal...")
-    subprocess.call(["systemctl", "stop", "readsb.service", "meshtasticd.service"])
-
+    subprocess.call(["systemctl", "disable", "--now", "readsb.service", "meshtasticd.service"])
     subprocess.call([
         "apt", "remove",
         "meshtastic-mui",
@@ -662,6 +661,46 @@ def remove_apps():
         "apt", "autoremove",
         "-y"
     ])
+
+    print("=== Starting readsb Cleanup Process ===")
+    print("Removing binary programs, logs, and configuration directories...")
+    for path in [
+        "/lib/systemd/system/readsb.service",
+        "/usr/bin/readsb",
+        "/etc/default/readsb",
+        "/usr/share/readsb",
+        "/var/log/readsb",
+        "/run/readsb",
+        "/usr/local/bin/readsb-gain",
+        "/usr/local/bin/readsb-set-location"
+    ]:
+        if os.path.exists(path) or os.path.islink(path):
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+            except Exception as e:
+                print(f"Warning: Failed to remove {path}: {e}")
+
+    subprocess.call(["systemctl", "daemon-reload"])
+
+    uninstall_script = "/usr/local/share/tar1090/uninstall.sh"
+    if os.path.isfile(uninstall_script):
+        print("Found tar1090 web interface. Running map uninstaller...")
+        subprocess.call(["/bin/bash", uninstall_script])
+    else:
+        print("tar1090 web interface not detected or already removed.")
+
+    print("=== Cleanup complete! readsb components have been removed. ===")
+
+    yaml_path = "/etc/meshtasticd/config.yaml"
+    if os.path.exists(yaml_path):
+        try:
+            os.remove(yaml_path)
+            print(f"Removed {yaml_path}")
+        except Exception as e:
+            print(f"Warning: Failed to remove {yaml_path}: {e}")
 
     print("\nApplications removed.")
     return 0
