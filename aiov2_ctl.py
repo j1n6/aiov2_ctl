@@ -610,6 +610,9 @@ def add_apps():
         print("Restoring SDR original status...")
         GpioController.set_feature("SDR", False)
 
+    print("\nDisabling readsb and meshtasticd services from OS autostart...")
+    subprocess.call(["systemctl", "disable", "readsb.service", "meshtasticd.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     print("\nInstallation complete.\n")
     print(POST_INSTALL_TIPS)
     report_and_disable_mesh_autostart_if_default("Meshtastic boot config status:")
@@ -623,6 +626,9 @@ def remove_apps():
         return 1
 
     draw_header("Removing HackerGadgets AIO applications")
+
+    print("Stopping related services before removal...")
+    subprocess.call(["systemctl", "stop", "readsb.service", "meshtasticd.service"])
 
     subprocess.call([
         "apt", "remove",
@@ -1154,7 +1160,8 @@ def run_gui():
 
     app_services_menu = QMenu("App Services")
 
-    mesh_menu = QMenu("meshtasticd.service")
+    mesh_title_action = QAction("meshtasticd.service")
+    mesh_title_action.setEnabled(False)
     mesh_status_action = QAction("Status: Stopped")
     mesh_status_action.setEnabled(False)
     mesh_start_action = QAction("Start")
@@ -1164,13 +1171,17 @@ def run_gui():
     mesh_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
     mesh_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
 
-    mesh_menu.addAction(mesh_status_action)
-    mesh_menu.addSeparator()
-    mesh_menu.addAction(mesh_start_action)
-    mesh_menu.addAction(mesh_stop_action)
-    mesh_menu.addAction(mesh_restart_action)
+    app_services_menu.addAction(mesh_title_action)
+    app_services_menu.addAction(mesh_status_action)
+    app_services_menu.addSeparator()
+    app_services_menu.addAction(mesh_start_action)
+    app_services_menu.addAction(mesh_stop_action)
+    app_services_menu.addAction(mesh_restart_action)
 
-    readsb_menu = QMenu("readsb.service")
+    app_services_menu.addSeparator()
+
+    readsb_title_action = QAction("readsb.service")
+    readsb_title_action.setEnabled(False)
     readsb_status_action = QAction("Status: Stopped")
     readsb_status_action.setEnabled(False)
     readsb_start_action = QAction("Start")
@@ -1180,14 +1191,12 @@ def run_gui():
     readsb_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "readsb.service"), refresh()))
     readsb_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "readsb.service"), refresh()))
 
-    readsb_menu.addAction(readsb_status_action)
-    readsb_menu.addSeparator()
-    readsb_menu.addAction(readsb_start_action)
-    readsb_menu.addAction(readsb_stop_action)
-    readsb_menu.addAction(readsb_restart_action)
-
-    app_services_menu.addMenu(mesh_menu)
-    app_services_menu.addMenu(readsb_menu)
+    app_services_menu.addAction(readsb_title_action)
+    app_services_menu.addAction(readsb_status_action)
+    app_services_menu.addSeparator()
+    app_services_menu.addAction(readsb_start_action)
+    app_services_menu.addAction(readsb_stop_action)
+    app_services_menu.addAction(readsb_restart_action)
 
     menu.addMenu(app_services_menu)
 
@@ -1258,7 +1267,7 @@ def run_gui():
             mesh_start_action.setEnabled(not mesh_active)
             mesh_stop_action.setEnabled(mesh_active)
 
-        mesh_menu.setTitle(f"meshtasticd.service ({mesh_state})")
+        mesh_title_action.setText(f"meshtasticd.service ({mesh_state})")
         mesh_status_action.setText(f"Status: {mesh_state}")
 
         if not GpioController._service_installed("readsb.service"):
@@ -1271,7 +1280,7 @@ def run_gui():
             readsb_start_action.setEnabled(not readsb_active)
             readsb_stop_action.setEnabled(readsb_active)
             
-        readsb_menu.setTitle(f"readsb.service ({readsb_state})")
+        readsb_title_action.setText(f"readsb.service ({readsb_state})")
         readsb_status_action.setText(f"Status: {readsb_state}")
 
     def on_activate(reason):
@@ -1438,7 +1447,7 @@ def install_self():
 
     cmds = []
     for s_path in systemctl_paths:
-        for action in ("status", "start", "stop", "restart", "is-active"):
+        for action in ("status", "start", "stop", "restart", "is-active", "disable"):
             for svc in ("readsb", "readsb.service", "meshtasticd", "meshtasticd.service"):
                 cmds.append(f"{s_path} {action} {svc}")
 
