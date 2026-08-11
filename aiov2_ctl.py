@@ -1110,7 +1110,7 @@ def run_gui():
     app_services_menu = QMenu("App Services")
 
     mesh_menu = QMenu("meshtasticd.service")
-    mesh_status_action = QAction("Status: stopped")
+    mesh_status_action = QAction("Status: Stopped")
     mesh_status_action.setEnabled(False)
     mesh_start_action = QAction("Start")
     mesh_stop_action = QAction("Stop")
@@ -1126,7 +1126,7 @@ def run_gui():
     mesh_menu.addAction(mesh_restart_action)
 
     readsb_menu = QMenu("readsb.service")
-    readsb_status_action = QAction("Status: stopped")
+    readsb_status_action = QAction("Status: Stopped")
     readsb_status_action.setEnabled(False)
     readsb_start_action = QAction("Start")
     readsb_stop_action = QAction("Stop")
@@ -1204,14 +1204,14 @@ def run_gui():
             boot_actions[f].blockSignals(False)
 
         mesh_active = GpioController._service_active("meshtasticd.service")
-        mesh_state = "running" if mesh_active else "stopped"
+        mesh_state = "Running" if mesh_active else "Stopped"
         mesh_menu.setTitle(f"meshtasticd.service ({mesh_state})")
         mesh_status_action.setText(f"Status: {mesh_state}")
         mesh_start_action.setEnabled(not mesh_active)
         mesh_stop_action.setEnabled(mesh_active)
 
         readsb_active = GpioController._service_active("readsb.service")
-        readsb_state = "running" if readsb_active else "stopped"
+        readsb_state = "Running" if readsb_active else "Stopped"
         readsb_menu.setTitle(f"readsb.service ({readsb_state})")
         readsb_status_action.setText(f"Status: {readsb_state}")
         readsb_start_action.setEnabled(not readsb_active)
@@ -1381,7 +1381,7 @@ def install_self():
 
     cmds = []
     for s_path in systemctl_paths:
-        for action in ("status", "start", "stop", "restart"):
+        for action in ("status", "start", "stop", "restart", "is-active"):
             for svc in ("readsb.service", "meshtasticd.service"):
                 cmds.append(f"{s_path} {action} {svc}")
 
