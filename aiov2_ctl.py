@@ -556,6 +556,13 @@ def add_apps():
 
     draw_header("Installing HackerGadgets AIO applications")
 
+    sdr_pin = GPIO_MAP["SDR"]
+    sdr_original_state = GpioController.get_gpio(sdr_pin)
+    if not sdr_original_state:
+        print("Turning on SDR for installation...")
+        GpioController.set_feature("SDR", True)
+        time.sleep(2)
+
     subprocess.check_call(["apt", "update"])
 
     subprocess.check_call([
@@ -569,14 +576,73 @@ def add_apps():
         "apt", "install",
         "meshtastic-mui",
         "sdrpp-brown",
-        "tar1090",
         "pygpsclient",
         "-y"
     ])
 
+    yaml_path = "/etc/meshtasticd/config.yaml"
+    if os.path.exists(yaml_path):
+        try:
+            with open(yaml_path, "r") as f:
+                content = f.read()
+            if not re.search(r"^[ \t]*gpiochip:", content, flags=re.MULTILINE):
+                content = re.sub(r"^([Ll]ora:.*)$", r"\1\n  gpiochip: 15", content, count=1, flags=re.MULTILINE)
+                with open(yaml_path, "w") as f:
+                    f.write(content)
+                print(f"Configured {yaml_path}: added gpiochip: 15 under Lora:")
+        except Exception as e:
+            print(f"Warning: Failed to configure {yaml_path}: {e}")
+
+    print("Checking readsb service before installing tar1090...")
+    subprocess.call(["systemctl", "start", "readsb.service"])
+    timeout = 20
+    elapsed = 0
+    readsb_ok = False
+    while elapsed < timeout:
+        if GpioController._service_active("readsb.service"):
+            readsb_ok = True
+            break
+        time.sleep(1)
+        elapsed += 1
+
+    if not readsb_ok:
+        print(f"Error: readsb service failed to start within {timeout} seconds.")
+        print("Installation requires SDR running and readsb services depends on SDR.")
+        if not sdr_original_state:
+            print("Restoring SDR original status...")
+            GpioController.set_feature("SDR", False)
+        return 1
+
+    subprocess.check_call([
+        "apt", "install",
+        "tar1090",
+        "-y"
+    ])
+
+    if not sdr_original_state:
+        print("Restoring SDR original status...")
+        GpioController.set_feature("SDR", False)
+
+    print("\nDisabling readsb and meshtasticd services from OS autostart...")
+    subprocess.call(["systemctl", "disable", "readsb.service", "meshtasticd.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     print("\nInstallation complete.\n")
     print(POST_INSTALL_TIPS)
     report_and_disable_mesh_autostart_if_default("Meshtastic boot config status:")
+    print("\n" + "=" * 50)
+    print("IMPORTANT: A system reboot is strongly recommended")
+    print("to ensure all new drivers and services are loaded correctly.")
+    print("=" * 50 + "\n")
+    while True:
+        resp = input("Would you like to reboot now? [Y/n] ").strip().lower()
+        if resp in ("y", "yes", ""):
+            print("Rebooting system...")
+            subprocess.call(["reboot"])
+            break
+        elif resp in ("n", "no"):
+            print("Please remember to reboot later.")
+            break
+
     return 0
 
 
@@ -588,6 +654,8 @@ def remove_apps():
 
     draw_header("Removing HackerGadgets AIO applications")
 
+    print("Stopping related services before removal...")
+    subprocess.call(["systemctl", "disable", "--now", "readsb.service", "meshtasticd.service"])
     subprocess.call([
         "apt", "remove",
         "meshtastic-mui",
@@ -607,6 +675,46 @@ def remove_apps():
         "apt", "autoremove",
         "-y"
     ])
+
+    print("=== Starting readsb Cleanup Process ===")
+    print("Removing binary programs, logs, and configuration directories...")
+    for path in [
+        "/lib/systemd/system/readsb.service",
+        "/usr/bin/readsb",
+        "/etc/default/readsb",
+        "/usr/share/readsb",
+        "/var/log/readsb",
+        "/run/readsb",
+        "/usr/local/bin/readsb-gain",
+        "/usr/local/bin/readsb-set-location"
+    ]:
+        if os.path.exists(path) or os.path.islink(path):
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+            except Exception as e:
+                print(f"Warning: Failed to remove {path}: {e}")
+
+    subprocess.call(["systemctl", "daemon-reload"])
+
+    uninstall_script = "/usr/local/share/tar1090/uninstall.sh"
+    if os.path.isfile(uninstall_script):
+        print("Found tar1090 web interface. Running map uninstaller...")
+        subprocess.call(["/bin/bash", uninstall_script])
+    else:
+        print("tar1090 web interface not detected or already removed.")
+
+    print("=== Cleanup complete! readsb components have been removed. ===")
+
+    yaml_path = "/etc/meshtasticd/config.yaml"
+    if os.path.exists(yaml_path):
+        try:
+            os.remove(yaml_path)
+            print(f"Removed {yaml_path}")
+        except Exception as e:
+            print(f"Warning: Failed to remove {yaml_path}: {e}")
 
     print("\nApplications removed.")
     return 0
@@ -660,9 +768,9 @@ class GpioController:
 
     @staticmethod
     def _service_active(name):
-        cmd = ["systemctl", "is-active", "--quiet", name]
-        if os.geteuid() == 0:
-            return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        cmd = ["systemctl", "is-active", name]
+        if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            return True
 
         return subprocess.run(
             ["sudo", "-n", *cmd],
@@ -672,9 +780,9 @@ class GpioController:
 
     @staticmethod
     def _service_enabled(name):
-        cmd = ["systemctl", "is-enabled", "--quiet", name]
-        if os.geteuid() == 0:
-            return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        cmd = ["systemctl", "is-enabled", name]
+        if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            return True
 
         return subprocess.run(
             ["sudo", "-n", *cmd],
@@ -683,11 +791,27 @@ class GpioController:
         ).returncode == 0
 
     @staticmethod
-    def _run_service(action):
+    def _service_installed(name):
+        cmd = ["systemctl", "show", "-p", "LoadState", name]
+        try:
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+            return output != "LoadState=not-found"
+        except Exception:
+            return False
+
+    @staticmethod
+    def _run_service(action, service_name="meshtasticd"):
+        if action == "start":
+            reset_cmd = ["systemctl", "reset-failed", service_name]
+            if os.geteuid() == 0:
+                subprocess.run(reset_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.run(["sudo", "-n", *reset_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
         if isinstance(action, (list, tuple)):
-            cmd = ["systemctl", *action, "meshtasticd"]
+            cmd = ["systemctl", *action, service_name]
         else:
-            cmd = ["systemctl", action, "meshtasticd"]
+            cmd = ["systemctl", action, service_name]
         if os.geteuid() == 0:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
@@ -715,17 +839,12 @@ class GpioController:
             return
         GpioController.set_gpio(pin, state)
         if feature == "LORA":
-            is_active = GpioController._service_active("meshtasticd")
             if state:
                 # Allow device enumeration after power-on
                 time.sleep(0.5)
-                if is_active:
-                    GpioController._run_service("restart")
-                else:
-                    GpioController._run_service("start")
+                GpioController._run_service("start", "meshtasticd.service")
             else:
-                if is_active:
-                    GpioController._run_service("stop")
+                GpioController._run_service("stop", "meshtasticd.service")
                 disable_mesh_autostart_if_default(announce=False)
 
     @staticmethod
@@ -1107,6 +1226,46 @@ def run_gui():
 
     menu.addMenu(boot_menu)
 
+    app_services_menu = QMenu("App Services")
+
+    mesh_title_action = QAction("meshtasticd.service")
+    mesh_title_action.setEnabled(False)
+    mesh_status_action = QAction("    Status: Stopped")
+    mesh_status_action.setEnabled(False)
+    mesh_start_action = QAction("    ▶ Start")
+    mesh_stop_action = QAction("    ■ Stop")
+    mesh_restart_action = QAction("    ↻ Restart")
+    mesh_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "meshtasticd.service"), refresh()))
+    mesh_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
+    mesh_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
+
+    app_services_menu.addAction(mesh_title_action)
+    app_services_menu.addAction(mesh_status_action)
+    app_services_menu.addAction(mesh_start_action)
+    app_services_menu.addAction(mesh_stop_action)
+    app_services_menu.addAction(mesh_restart_action)
+
+    app_services_menu.addSeparator()
+
+    readsb_title_action = QAction("readsb.service")
+    readsb_title_action.setEnabled(False)
+    readsb_status_action = QAction("    Status: Stopped")
+    readsb_status_action.setEnabled(False)
+    readsb_start_action = QAction("    ▶ Start")
+    readsb_stop_action = QAction("    ■ Stop")
+    readsb_restart_action = QAction("    ↻ Restart")
+    readsb_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "readsb.service"), refresh()))
+    readsb_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "readsb.service"), refresh()))
+    readsb_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "readsb.service"), refresh()))
+
+    app_services_menu.addAction(readsb_title_action)
+    app_services_menu.addAction(readsb_status_action)
+    app_services_menu.addAction(readsb_start_action)
+    app_services_menu.addAction(readsb_stop_action)
+    app_services_menu.addAction(readsb_restart_action)
+
+    menu.addMenu(app_services_menu)
+
     menu.addSeparator()
     power_action = QAction("Power: -- W")
     power_action.setEnabled(False)
@@ -1163,6 +1322,38 @@ def run_gui():
             boot_actions[f].blockSignals(True)
             boot_actions[f].setChecked(bool(rails_on_boot.get(f, False)))
             boot_actions[f].blockSignals(False)
+
+        if not GpioController._service_installed("meshtasticd.service"):
+            mesh_state = "Not installed"
+            mesh_start_action.setVisible(False)
+            mesh_stop_action.setVisible(False)
+            mesh_restart_action.setVisible(False)
+        else:
+            mesh_active = GpioController._service_active("meshtasticd.service")
+            mesh_state = "Running" if mesh_active else "Stopped"
+            mesh_start_action.setVisible(True)
+            mesh_stop_action.setVisible(True)
+            mesh_restart_action.setVisible(True)
+            mesh_start_action.setEnabled(not mesh_active)
+            mesh_stop_action.setEnabled(mesh_active)
+
+        mesh_status_action.setText(f"    Status: {mesh_state}")
+
+        if not GpioController._service_installed("readsb.service"):
+            readsb_state = "Not installed"
+            readsb_start_action.setVisible(False)
+            readsb_stop_action.setVisible(False)
+            readsb_restart_action.setVisible(False)
+        else:
+            readsb_active = GpioController._service_active("readsb.service")
+            readsb_state = "Running" if readsb_active else "Stopped"
+            readsb_start_action.setVisible(True)
+            readsb_stop_action.setVisible(True)
+            readsb_restart_action.setVisible(True)
+            readsb_start_action.setEnabled(not readsb_active)
+            readsb_stop_action.setEnabled(readsb_active)
+            
+        readsb_status_action.setText(f"    Status: {readsb_state}")
 
     def on_activate(reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -1315,6 +1506,32 @@ def install_self():
     os.chmod(RAILS_BOOT_SERVICE_PATH, 0o644)
     subprocess.call(["systemctl", "daemon-reload"])
     subprocess.call(["systemctl", "enable", RAILS_BOOT_SERVICE])
+
+    # ------------------------------
+    # Install sudoers rule for systemctl status checks
+    # ------------------------------
+    sudoers_path = "/etc/sudoers.d/aiov2_ctl"
+    print(f"Installing sudoers rule → {sudoers_path}\n")
+
+    # Detect the real systemctl path
+    systemctl = shutil.which("systemctl") or "/bin/systemctl"
+    systemctl_paths = sorted(list({systemctl, "/bin/systemctl", "/usr/bin/systemctl"}))
+
+    cmds = []
+    for s_path in systemctl_paths:
+        for action in ("status", "start", "stop", "restart", "is-active", "disable", "reset-failed"):
+            for svc in ("readsb", "readsb.service", "meshtasticd", "meshtasticd.service"):
+                cmds.append(f"{s_path} {action} {svc}")
+
+    sudoers_rules = [
+        f"ALL ALL=(ALL) NOPASSWD: {', '.join(cmds)}"
+    ]
+
+    sudoers_content = "# Generated by aiov2_ctl --install\n" + "\n".join(sudoers_rules) + "\n"
+
+    with open(sudoers_path, "w") as f:
+        f.write(sudoers_content)
+    os.chmod(sudoers_path, 0o440)
 
     os.makedirs(os.path.dirname(INSTALL_META_PATH), exist_ok=True)
     with open(INSTALL_META_PATH, "w") as f:
