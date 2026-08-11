@@ -787,6 +787,13 @@ class GpioController:
 
     @staticmethod
     def _run_service(action, service_name="meshtasticd"):
+        if action == "start":
+            reset_cmd = ["systemctl", "reset-failed", service_name]
+            if os.geteuid() == 0:
+                subprocess.run(reset_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.run(["sudo", "-n", *reset_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
         if isinstance(action, (list, tuple)):
             cmd = ["systemctl", *action, service_name]
         else:
@@ -1214,18 +1221,17 @@ def run_gui():
 
     mesh_title_action = QAction("meshtasticd.service")
     mesh_title_action.setEnabled(False)
-    mesh_status_action = QAction("Status: Stopped")
+    mesh_status_action = QAction("    Status: Stopped")
     mesh_status_action.setEnabled(False)
-    mesh_start_action = QAction("Start")
-    mesh_stop_action = QAction("Stop")
-    mesh_restart_action = QAction("Restart")
+    mesh_start_action = QAction("    ▶ Start")
+    mesh_stop_action = QAction("    ■ Stop")
+    mesh_restart_action = QAction("    ↻ Restart")
     mesh_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "meshtasticd.service"), refresh()))
     mesh_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
     mesh_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
 
     app_services_menu.addAction(mesh_title_action)
     app_services_menu.addAction(mesh_status_action)
-    app_services_menu.addSeparator()
     app_services_menu.addAction(mesh_start_action)
     app_services_menu.addAction(mesh_stop_action)
     app_services_menu.addAction(mesh_restart_action)
@@ -1234,18 +1240,17 @@ def run_gui():
 
     readsb_title_action = QAction("readsb.service")
     readsb_title_action.setEnabled(False)
-    readsb_status_action = QAction("Status: Stopped")
+    readsb_status_action = QAction("    Status: Stopped")
     readsb_status_action.setEnabled(False)
-    readsb_start_action = QAction("Start")
-    readsb_stop_action = QAction("Stop")
-    readsb_restart_action = QAction("Restart")
+    readsb_start_action = QAction("    ▶ Start")
+    readsb_stop_action = QAction("    ■ Stop")
+    readsb_restart_action = QAction("    ↻ Restart")
     readsb_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "readsb.service"), refresh()))
     readsb_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "readsb.service"), refresh()))
     readsb_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "readsb.service"), refresh()))
 
     app_services_menu.addAction(readsb_title_action)
     app_services_menu.addAction(readsb_status_action)
-    app_services_menu.addSeparator()
     app_services_menu.addAction(readsb_start_action)
     app_services_menu.addAction(readsb_stop_action)
     app_services_menu.addAction(readsb_restart_action)
@@ -1323,7 +1328,7 @@ def run_gui():
             mesh_start_action.setEnabled(not mesh_active)
             mesh_stop_action.setEnabled(mesh_active)
 
-        mesh_status_action.setText(f"Status: {mesh_state}")
+        mesh_status_action.setText(f"    Status: {mesh_state}")
 
         if not GpioController._service_installed("readsb.service"):
             readsb_state = "Not installed"
@@ -1339,7 +1344,7 @@ def run_gui():
             readsb_start_action.setEnabled(not readsb_active)
             readsb_stop_action.setEnabled(readsb_active)
             
-        readsb_status_action.setText(f"Status: {readsb_state}")
+        readsb_status_action.setText(f"    Status: {readsb_state}")
 
     def on_activate(reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -1505,7 +1510,7 @@ def install_self():
 
     cmds = []
     for s_path in systemctl_paths:
-        for action in ("status", "start", "stop", "restart", "is-active", "disable"):
+        for action in ("status", "start", "stop", "restart", "is-active", "disable", "reset-failed"):
             for svc in ("readsb", "readsb.service", "meshtasticd", "meshtasticd.service"):
                 cmds.append(f"{s_path} {action} {svc}")
 
