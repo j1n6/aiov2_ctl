@@ -718,6 +718,15 @@ class GpioController:
         ).returncode == 0
 
     @staticmethod
+    def _service_installed(name):
+        cmd = ["systemctl", "show", "-p", "LoadState", name]
+        try:
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+            return output != "LoadState=not-found"
+        except Exception:
+            return False
+
+    @staticmethod
     def _run_service(action, service_name="meshtasticd"):
         if isinstance(action, (list, tuple)):
             cmd = ["systemctl", *action, service_name]
@@ -1238,19 +1247,31 @@ def run_gui():
             boot_actions[f].setChecked(bool(rails_on_boot.get(f, False)))
             boot_actions[f].blockSignals(False)
 
-        mesh_active = GpioController._service_active("meshtasticd.service")
-        mesh_state = "Running" if mesh_active else "Stopped"
+        if not GpioController._service_installed("meshtasticd.service"):
+            mesh_state = "Not installed"
+            mesh_start_action.setEnabled(False)
+            mesh_stop_action.setEnabled(False)
+        else:
+            mesh_active = GpioController._service_active("meshtasticd.service")
+            mesh_state = "Running" if mesh_active else "Stopped"
+            mesh_start_action.setEnabled(not mesh_active)
+            mesh_stop_action.setEnabled(mesh_active)
+
         mesh_menu.setTitle(f"meshtasticd.service ({mesh_state})")
         mesh_status_action.setText(f"Status: {mesh_state}")
-        mesh_start_action.setEnabled(not mesh_active)
-        mesh_stop_action.setEnabled(mesh_active)
 
-        readsb_active = GpioController._service_active("readsb.service")
-        readsb_state = "Running" if readsb_active else "Stopped"
+        if not GpioController._service_installed("readsb.service"):
+            readsb_state = "Not installed"
+            readsb_start_action.setEnabled(False)
+            readsb_stop_action.setEnabled(False)
+        else:
+            readsb_active = GpioController._service_active("readsb.service")
+            readsb_state = "Running" if readsb_active else "Stopped"
+            readsb_start_action.setEnabled(not readsb_active)
+            readsb_stop_action.setEnabled(readsb_active)
+            
         readsb_menu.setTitle(f"readsb.service ({readsb_state})")
         readsb_status_action.setText(f"Status: {readsb_state}")
-        readsb_start_action.setEnabled(not readsb_active)
-        readsb_stop_action.setEnabled(readsb_active)
 
     def on_activate(reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
