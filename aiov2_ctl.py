@@ -556,6 +556,13 @@ def add_apps():
 
     draw_header("Installing HackerGadgets AIO applications")
 
+    sdr_pin = GPIO_MAP["SDR"]
+    sdr_original_state = GpioController.get_gpio(sdr_pin)
+    if not sdr_original_state:
+        print("Turning on SDR for installation...")
+        GpioController.set_feature("SDR", True)
+        time.sleep(2)
+
     subprocess.check_call(["apt", "update"])
 
     subprocess.check_call([
@@ -569,10 +576,38 @@ def add_apps():
         "apt", "install",
         "meshtastic-mui",
         "sdrpp-brown",
-        "tar1090",
         "pygpsclient",
         "-y"
     ])
+
+    print("Checking readsb service before installing tar1090...")
+    timeout = 20
+    elapsed = 0
+    readsb_ok = False
+    while elapsed < timeout:
+        if GpioController._service_active("readsb.service"):
+            readsb_ok = True
+            break
+        time.sleep(1)
+        elapsed += 1
+
+    if not readsb_ok:
+        print(f"Error: readsb service failed to start within {timeout} seconds.")
+        print("Installation requires SDR running and readsb services depends on SDR.")
+        if not sdr_original_state:
+            print("Restoring SDR original status...")
+            GpioController.set_feature("SDR", False)
+        return 1
+
+    subprocess.check_call([
+        "apt", "install",
+        "tar1090",
+        "-y"
+    ])
+
+    if not sdr_original_state:
+        print("Restoring SDR original status...")
+        GpioController.set_feature("SDR", False)
 
     print("\nInstallation complete.\n")
     print(POST_INSTALL_TIPS)
