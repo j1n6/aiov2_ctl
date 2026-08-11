@@ -580,6 +580,21 @@ def add_apps():
         "-y"
     ])
 
+    yaml_path = "/etc/meshtasticd/config.yaml"
+    if os.path.exists(yaml_path):
+        try:
+            with open(yaml_path, "r") as f:
+                content = f.read()
+            if "gpiochip:" in content:
+                content = re.sub(r"^#?\s*gpiochip:.*$", "gpiochip: 15", content, flags=re.MULTILINE)
+            else:
+                content = content.rstrip() + "\n\ngpiochip: 15\n"
+            with open(yaml_path, "w") as f:
+                f.write(content)
+            print(f"Configured {yaml_path}: gpiochip enabled and set to 15.")
+        except Exception as e:
+            print(f"Warning: Failed to configure {yaml_path}: {e}")
+
     print("Checking readsb service before installing tar1090...")
     subprocess.call(["systemctl", "start", "readsb.service"])
     timeout = 20
