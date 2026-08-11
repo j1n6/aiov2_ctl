@@ -661,8 +661,8 @@ class GpioController:
     @staticmethod
     def _service_active(name):
         cmd = ["systemctl", "is-active", "--quiet", name]
-        if os.geteuid() == 0:
-            return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            return True
 
         return subprocess.run(
             ["sudo", "-n", *cmd],
@@ -673,8 +673,8 @@ class GpioController:
     @staticmethod
     def _service_enabled(name):
         cmd = ["systemctl", "is-enabled", "--quiet", name]
-        if os.geteuid() == 0:
-            return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            return True
 
         return subprocess.run(
             ["sudo", "-n", *cmd],
@@ -683,11 +683,11 @@ class GpioController:
         ).returncode == 0
 
     @staticmethod
-    def _run_service(action):
+    def _run_service(action, service_name="meshtasticd"):
         if isinstance(action, (list, tuple)):
-            cmd = ["systemctl", *action, "meshtasticd"]
+            cmd = ["systemctl", *action, service_name]
         else:
-            cmd = ["systemctl", action, "meshtasticd"]
+            cmd = ["systemctl", action, service_name]
         if os.geteuid() == 0:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
@@ -1107,6 +1107,45 @@ def run_gui():
 
     menu.addMenu(boot_menu)
 
+    app_services_menu = QMenu("App Services")
+
+    mesh_menu = QMenu("meshtasticd.service")
+    mesh_status_action = QAction("Status: stopped")
+    mesh_status_action.setEnabled(False)
+    mesh_start_action = QAction("Start")
+    mesh_stop_action = QAction("Stop")
+    mesh_restart_action = QAction("Restart")
+    mesh_start_action.triggered.connect(lambda: (GpioController._run_service("start", "meshtasticd.service"), refresh()))
+    mesh_stop_action.triggered.connect(lambda: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
+    mesh_restart_action.triggered.connect(lambda: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
+
+    mesh_menu.addAction(mesh_status_action)
+    mesh_menu.addSeparator()
+    mesh_menu.addAction(mesh_start_action)
+    mesh_menu.addAction(mesh_stop_action)
+    mesh_menu.addAction(mesh_restart_action)
+
+    readsb_menu = QMenu("readsb.service")
+    readsb_status_action = QAction("Status: stopped")
+    readsb_status_action.setEnabled(False)
+    readsb_start_action = QAction("Start")
+    readsb_stop_action = QAction("Stop")
+    readsb_restart_action = QAction("Restart")
+    readsb_start_action.triggered.connect(lambda: (GpioController._run_service("start", "readsb.service"), refresh()))
+    readsb_stop_action.triggered.connect(lambda: (GpioController._run_service("stop", "readsb.service"), refresh()))
+    readsb_restart_action.triggered.connect(lambda: (GpioController._run_service("restart", "readsb.service"), refresh()))
+
+    readsb_menu.addAction(readsb_status_action)
+    readsb_menu.addSeparator()
+    readsb_menu.addAction(readsb_start_action)
+    readsb_menu.addAction(readsb_stop_action)
+    readsb_menu.addAction(readsb_restart_action)
+
+    app_services_menu.addMenu(mesh_menu)
+    app_services_menu.addMenu(readsb_menu)
+
+    menu.addMenu(app_services_menu)
+
     menu.addSeparator()
     power_action = QAction("Power: -- W")
     power_action.setEnabled(False)
@@ -1163,6 +1202,20 @@ def run_gui():
             boot_actions[f].blockSignals(True)
             boot_actions[f].setChecked(bool(rails_on_boot.get(f, False)))
             boot_actions[f].blockSignals(False)
+
+        mesh_active = GpioController._service_active("meshtasticd.service")
+        mesh_state = "running" if mesh_active else "stopped"
+        mesh_menu.setTitle(f"meshtasticd.service ({mesh_state})")
+        mesh_status_action.setText(f"Status: {mesh_state}")
+        mesh_start_action.setEnabled(not mesh_active)
+        mesh_stop_action.setEnabled(mesh_active)
+
+        readsb_active = GpioController._service_active("readsb.service")
+        readsb_state = "running" if readsb_active else "stopped"
+        readsb_menu.setTitle(f"readsb.service ({readsb_state})")
+        readsb_status_action.setText(f"Status: {readsb_state}")
+        readsb_start_action.setEnabled(not readsb_active)
+        readsb_stop_action.setEnabled(readsb_active)
 
     def on_activate(reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -1315,6 +1368,32 @@ def install_self():
     os.chmod(RAILS_BOOT_SERVICE_PATH, 0o644)
     subprocess.call(["systemctl", "daemon-reload"])
     subprocess.call(["systemctl", "enable", RAILS_BOOT_SERVICE])
+
+    # ------------------------------
+    # Install sudoers rule for systemctl status checks
+    # ------------------------------
+    sudoers_path = "/etc/sudoers.d/aiov2_ctl"
+    print(f"Installing sudoers rule → {sudoers_path}\n")
+
+    # Detect the real systemctl path
+    systemctl = shutil.which("systemctl") or "/bin/systemctl"
+    systemctl_paths = sorted(list({systemctl, "/bin/systemctl", "/usr/bin/systemctl"}))
+
+    cmds = []
+    for s_path in systemctl_paths:
+        for action in ("status", "start", "stop", "restart"):
+            for svc in ("readsb.service", "meshtasticd.service"):
+                cmds.append(f"{s_path} {action} {svc}")
+
+    sudoers_rules = [
+        f"ALL ALL=(ALL) NOPASSWD: {', '.join(cmds)}"
+    ]
+
+    sudoers_content = "# Generated by aiov2_ctl --install\n" + "\n".join(sudoers_rules) + "\n"
+
+    with open(sudoers_path, "w") as f:
+        f.write(sudoers_content)
+    os.chmod(sudoers_path, 0o440)
 
     os.makedirs(os.path.dirname(INSTALL_META_PATH), exist_ok=True)
     with open(INSTALL_META_PATH, "w") as f:
