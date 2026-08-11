@@ -1276,6 +1276,7 @@ def run_gui():
 
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
+    menu.aboutToShow.connect(lambda: refresh(force=True))
     tray.setContextMenu(menu)
 
     # -------- Left-click window --------
@@ -1296,7 +1297,9 @@ def run_gui():
         layout.addWidget(cb)
         checkboxes[f] = cb
 
-    def refresh():
+    def refresh(force=False):
+        if not force and not window.isVisible() and not menu.isVisible():
+            return
         summary = Telemetry.power_summary()
         rails_on_boot = get_rails_on_boot_config(system_only=True)
         if summary:
@@ -1357,7 +1360,7 @@ def run_gui():
 
     def on_activate(reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            refresh()
+            refresh(force=True)
             window.move(QCursor.pos())
             window.show()
             window.raise_()
