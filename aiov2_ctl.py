@@ -628,6 +628,7 @@ def remove_apps():
         "meshtastic-mui",
         "sdrpp-brown",
         "tar1090",
+        "readsb",
         "pygpsclient",
         "-y"
     ])
