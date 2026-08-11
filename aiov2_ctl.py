@@ -629,6 +629,20 @@ def add_apps():
     print("\nInstallation complete.\n")
     print(POST_INSTALL_TIPS)
     report_and_disable_mesh_autostart_if_default("Meshtastic boot config status:")
+    print("\n" + "=" * 50)
+    print("IMPORTANT: A system reboot is strongly recommended")
+    print("to ensure all new drivers and services are loaded correctly.")
+    print("=" * 50 + "\n")
+    while True:
+        resp = input("Would you like to reboot now? [Y/n] ").strip().lower()
+        if resp in ("y", "yes", ""):
+            print("Rebooting system...")
+            subprocess.call(["reboot"])
+            break
+        elif resp in ("n", "no"):
+            print("Please remember to reboot later.")
+            break
+
     return 0
 
 
