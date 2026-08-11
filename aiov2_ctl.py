@@ -825,17 +825,12 @@ class GpioController:
             return
         GpioController.set_gpio(pin, state)
         if feature == "LORA":
-            is_active = GpioController._service_active("meshtasticd")
             if state:
                 # Allow device enumeration after power-on
                 time.sleep(0.5)
-                if is_active:
-                    GpioController._run_service("restart")
-                else:
-                    GpioController._run_service("start")
+                GpioController._run_service("start", "meshtasticd.service")
             else:
-                if is_active:
-                    GpioController._run_service("stop")
+                GpioController._run_service("stop", "meshtasticd.service")
                 disable_mesh_autostart_if_default(announce=False)
 
     @staticmethod
