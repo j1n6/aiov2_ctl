@@ -1311,28 +1311,34 @@ def run_gui():
 
         if not GpioController._service_installed("meshtasticd.service"):
             mesh_state = "Not installed"
-            mesh_start_action.setEnabled(False)
-            mesh_stop_action.setEnabled(False)
+            mesh_start_action.setVisible(False)
+            mesh_stop_action.setVisible(False)
+            mesh_restart_action.setVisible(False)
         else:
             mesh_active = GpioController._service_active("meshtasticd.service")
             mesh_state = "Running" if mesh_active else "Stopped"
+            mesh_start_action.setVisible(True)
+            mesh_stop_action.setVisible(True)
+            mesh_restart_action.setVisible(True)
             mesh_start_action.setEnabled(not mesh_active)
             mesh_stop_action.setEnabled(mesh_active)
 
-        mesh_title_action.setText(f"meshtasticd.service ({mesh_state})")
         mesh_status_action.setText(f"Status: {mesh_state}")
 
         if not GpioController._service_installed("readsb.service"):
             readsb_state = "Not installed"
-            readsb_start_action.setEnabled(False)
-            readsb_stop_action.setEnabled(False)
+            readsb_start_action.setVisible(False)
+            readsb_stop_action.setVisible(False)
+            readsb_restart_action.setVisible(False)
         else:
             readsb_active = GpioController._service_active("readsb.service")
             readsb_state = "Running" if readsb_active else "Stopped"
+            readsb_start_action.setVisible(True)
+            readsb_stop_action.setVisible(True)
+            readsb_restart_action.setVisible(True)
             readsb_start_action.setEnabled(not readsb_active)
             readsb_stop_action.setEnabled(readsb_active)
             
-        readsb_title_action.setText(f"readsb.service ({readsb_state})")
         readsb_status_action.setText(f"Status: {readsb_state}")
 
     def on_activate(reason):
