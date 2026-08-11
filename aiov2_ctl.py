@@ -585,13 +585,11 @@ def add_apps():
         try:
             with open(yaml_path, "r") as f:
                 content = f.read()
-            if "gpiochip:" in content:
-                content = re.sub(r"^#?\s*gpiochip:.*$", "gpiochip: 15", content, flags=re.MULTILINE)
-            else:
-                content = content.rstrip() + "\n\ngpiochip: 15\n"
-            with open(yaml_path, "w") as f:
-                f.write(content)
-            print(f"Configured {yaml_path}: gpiochip enabled and set to 15.")
+            if not re.search(r"^[ \t]*gpiochip:", content, flags=re.MULTILINE):
+                content = re.sub(r"^([Ll]ora:.*)$", r"\1\n  gpiochip: 15", content, count=1, flags=re.MULTILINE)
+                with open(yaml_path, "w") as f:
+                    f.write(content)
+                print(f"Configured {yaml_path}: added gpiochip: 15 under Lora:")
         except Exception as e:
             print(f"Warning: Failed to configure {yaml_path}: {e}")
 
