@@ -660,7 +660,7 @@ class GpioController:
 
     @staticmethod
     def _service_active(name):
-        cmd = ["systemctl", "is-active", "--quiet", name]
+        cmd = ["systemctl", "is-active", name]
         if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             return True
 
@@ -672,7 +672,7 @@ class GpioController:
 
     @staticmethod
     def _service_enabled(name):
-        cmd = ["systemctl", "is-enabled", "--quiet", name]
+        cmd = ["systemctl", "is-enabled", name]
         if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             return True
 
@@ -1115,9 +1115,9 @@ def run_gui():
     mesh_start_action = QAction("Start")
     mesh_stop_action = QAction("Stop")
     mesh_restart_action = QAction("Restart")
-    mesh_start_action.triggered.connect(lambda: (GpioController._run_service("start", "meshtasticd.service"), refresh()))
-    mesh_stop_action.triggered.connect(lambda: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
-    mesh_restart_action.triggered.connect(lambda: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
+    mesh_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "meshtasticd.service"), refresh()))
+    mesh_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "meshtasticd.service"), refresh()))
+    mesh_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "meshtasticd.service"), refresh()))
 
     mesh_menu.addAction(mesh_status_action)
     mesh_menu.addSeparator()
@@ -1131,9 +1131,9 @@ def run_gui():
     readsb_start_action = QAction("Start")
     readsb_stop_action = QAction("Stop")
     readsb_restart_action = QAction("Restart")
-    readsb_start_action.triggered.connect(lambda: (GpioController._run_service("start", "readsb.service"), refresh()))
-    readsb_stop_action.triggered.connect(lambda: (GpioController._run_service("stop", "readsb.service"), refresh()))
-    readsb_restart_action.triggered.connect(lambda: (GpioController._run_service("restart", "readsb.service"), refresh()))
+    readsb_start_action.triggered.connect(lambda _=False: (GpioController._run_service("start", "readsb.service"), refresh()))
+    readsb_stop_action.triggered.connect(lambda _=False: (GpioController._run_service("stop", "readsb.service"), refresh()))
+    readsb_restart_action.triggered.connect(lambda _=False: (GpioController._run_service("restart", "readsb.service"), refresh()))
 
     readsb_menu.addAction(readsb_status_action)
     readsb_menu.addSeparator()
@@ -1382,7 +1382,7 @@ def install_self():
     cmds = []
     for s_path in systemctl_paths:
         for action in ("status", "start", "stop", "restart", "is-active"):
-            for svc in ("readsb.service", "meshtasticd.service"):
+            for svc in ("readsb", "readsb.service", "meshtasticd", "meshtasticd.service"):
                 cmds.append(f"{s_path} {action} {svc}")
 
     sudoers_rules = [
