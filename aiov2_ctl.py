@@ -581,6 +581,7 @@ def add_apps():
     ])
 
     print("Checking readsb service before installing tar1090...")
+    subprocess.call(["systemctl", "start", "readsb.service"])
     timeout = 20
     elapsed = 0
     readsb_ok = False
@@ -628,7 +629,6 @@ def remove_apps():
         "meshtastic-mui",
         "sdrpp-brown",
         "tar1090",
-        "readsb",
         "pygpsclient",
         "-y"
     ])
