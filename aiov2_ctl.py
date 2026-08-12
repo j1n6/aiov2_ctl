@@ -1276,7 +1276,15 @@ def run_gui():
 
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
-    menu.aboutToShow.connect(lambda: refresh(force=True))
+    menu_active = [False]
+    def on_menu_show():
+        menu_active[0] = True
+        refresh(force=True)
+    def on_menu_hide():
+        menu_active[0] = False
+        
+    menu.aboutToShow.connect(on_menu_show)
+    menu.aboutToHide.connect(on_menu_hide)
     tray.setContextMenu(menu)
 
     # -------- Left-click window --------
@@ -1298,7 +1306,7 @@ def run_gui():
         checkboxes[f] = cb
 
     def refresh(force=False):
-        if not force and not window.isVisible() and not menu.isVisible():
+        if not force and not window.isVisible() and not menu_active[0]:
             return
         summary = Telemetry.power_summary()
         rails_on_boot = get_rails_on_boot_config(system_only=True)
